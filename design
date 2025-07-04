@@ -1,0 +1,135 @@
+module fir_3tap(clk,rst,xin,y);
+    input clk;                  
+    input rst;                 
+    input [7:0] xin;             
+    output reg [16:0] y;         
+
+wire[7:0] z0,z1,z2; //output of dff
+wire[16:0] mc0,mc1,mc2; // output of mac
+
+wire [7:0] h0 = 8'd2;
+wire [7:0] h1 = 8'd2;
+wire [7:0] h2 = 8'd2;
+
+
+DFF dff0 (.clk(clk),.rst(rst),.d(xin),.q(z0));
+DFF dff1 (.clk(clk),.rst(rst),.d(z0),.q(z1));
+DFF dff2 (.clk(clk),.rst(rst),.d(z1),.q(z2));
+
+
+MAC_8 mac1 (.a(xin),.b(h0),.c(0),.y(mc0));
+MAC_8 mac2 (.a(z0),.b(h1),.c(mc0),.y(mc1));
+MAC_8 mac3 (.a(z1),.b(h2),.c(mc1),.y(mc2));
+
+
+always @ (posedge clk or posedge rst)
+begin
+ if (rst)
+    y <= 16'd0;
+ else
+    y <= mc2;
+end
+
+endmodule
+
+//dff
+module DFF(clk,rst,d,q);
+input clk,rst;
+input [7:0] d;
+output reg [7:0] q;
+
+always @ (posedge clk or posedge rst)
+begin
+ if (rst)
+    q <= 8'd0;
+ else
+    q <= d;
+end
+                
+endmodule
+
+//mac
+module MAC_8(a,b,c,y);
+input [7:0] a,b;
+input [15:0] c;
+output [16:0] y;
+wire [32:0] p;
+
+ks_8 MUL1(.x(a),.y(b),.result(p[15:0]));
+add AD1(.a(p[15:0]),.b(c),.s(p[32:16]));
+//RA_16 RA1 (.a(p[15:0]),.b(c),.s(p[32:16]));
+//assign p[32:16] = .a(p[15:0] +.b(c);
+assign y = p[32:16];
+
+endmodule
+
+module add(
+input [15:0] a,b,
+output [16:0] s
+);
+assign s=a+b;
+endmodule
+
+module ks_8(
+    input [7:0] x,
+    input [7:0] y,
+    output [15:0] result
+    );
+    wire [7:0] high_high, low_high, high_low, low_low;
+    wire [15:0] partial_high, partial_low;
+    wire [12:0] middle_sum;
+
+    // Instantiate 4-bit multipliers for each part
+    karatsuba_mul_4bit mul_high_high(.x(x[7:4]), .y(y[7:4]), .result(high_high));
+    karatsuba_mul_4bit mul_low_high(.x(x[3:0]), .y(y[7:4]), .result(low_high));
+    karatsuba_mul_4bit mul_high_low(.x(x[7:4]), .y(y[3:0]), .result(high_low));
+    karatsuba_mul_4bit mul_low_low(.x(x[3:0]), .y(y[3:0]), .result(low_low));
+
+    assign partial_low = low_low;
+    assign middle_sum = (low_high + high_low) << 4;
+    assign partial_high = high_high << 8;
+
+    assign result = partial_high + partial_low + middle_sum;
+endmodule
+
+module karatsuba_mul_4bit(
+    input [3:0] x,
+    input [3:0] y,
+    output [7:0] result
+    );
+
+    wire [3:0] high_high, low_high, high_low, low_low;
+    wire [7:0] partial_high, partial_low;
+    wire [6:0] middle_sum;
+
+    // Instantiate 2-bit multipliers for each part
+    karatsuba_mul_2bit mul_high_high(.x(x[3:2]), .y(y[3:2]), .result(high_high));
+    karatsuba_mul_2bit mul_low_high(.x(x[1:0]), .y(y[3:2]), .result(low_high));
+    karatsuba_mul_2bit mul_high_low(.x(x[3:2]), .y(y[1:0]), .result(high_low));
+    karatsuba_mul_2bit mul_low_low(.x(x[1:0]), .y(y[1:0]), .result(low_low));
+
+    assign partial_low = low_low;
+    assign middle_sum = (low_high + high_low) << 2;
+    assign partial_high = high_high << 4;
+
+    assign result = partial_high + partial_low + middle_sum;
+endmodule
+
+module karatsuba_mul_2bit(
+    input [1:0] x,
+    input [1:0] y,
+    output [3:0] result
+    );
+
+    wire cross_term;
+
+    assign result[0] = x[0] & y[0];
+    assign result[1] = (x[1] & y[0]) ^ (x[0] & y[1]);
+    assign cross_term = (x[1] & y[0]) & (x[0] & y[1]);
+    assign result[2] = cross_term ^ (x[1] & y[1]);
+    assign result[3] = cross_term & (x[1] & y[1]);
+
+endmodule
+
+
+
